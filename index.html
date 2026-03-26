@@ -1748,6 +1748,7 @@ function setupPinCheck() {
 // LOGIN PIN
 // ──────────────────────────────────────
 let loginInput = '';
+let loginFailCount = 0;
 
 function loginPinPress(d) {
   if (loginInput.length >= 4) return;
@@ -1771,16 +1772,41 @@ function updateLoginDots() {
 
 function checkLoginPin() {
   if (loginInput === localStorage.getItem('maja_pin')) {
+    loginFailCount = 0;
     onLoginSuccess();
   } else {
+    loginFailCount++;
     for (let i = 0; i < 4; i++) document.getElementById(`ld${i}`).classList.add('error');
-    document.getElementById('loginError').textContent = 'Neteisingas PIN';
+
+    const errEl = document.getElementById('loginError');
+    const subEl = document.getElementById('loginSub');
+
+    if (loginFailCount >= 5) {
+      errEl.innerHTML = `Neteisingas PIN · <a href="#" onclick="forgotPin()" style="color:var(--accent);text-decoration:none;">Pamiršau PIN</a>`;
+    } else {
+      errEl.textContent = `Neteisingas PIN (${loginFailCount}/5)`;
+    }
+
     setTimeout(() => {
       loginInput = '';
       updateLoginDots();
-      document.getElementById('loginError').textContent = '';
+      if (loginFailCount < 5) errEl.textContent = '';
     }, 900);
   }
+}
+
+function forgotPin() {
+  if (!confirm('Ištrinti PIN ir pradėti iš naujo?\n\nDuomenys Sheets nebus ištrinti.')) return;
+  localStorage.removeItem('maja_pin');
+  localStorage.removeItem('bio_cred');
+  loginFailCount = 0;
+  document.getElementById('loginError').textContent = '';
+  showScreen('screen-setup');
+  // Reset setup state
+  setupInput = ''; setupFirst = '';
+  updateSetupDots();
+  document.getElementById('setupSub').textContent = 'Pasirinkite 4 skaitmenų PIN kodą';
+  document.getElementById('setupError').textContent = '';
 }
 
 function onLoginSuccess() {
