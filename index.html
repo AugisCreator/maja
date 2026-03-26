@@ -1320,7 +1320,13 @@ async function loadToday() {
   try {
     const d = await get({ action:'getEntries', date: today });
     if (d.error) throw new Error(d.error);
-    renderEntries(list, d.entries || [], true);
+    const entries = d.entries || [];
+    if (entries.length === 0) {
+      // Rodome datą kurią siuntėme — pagalbai diagnozuoti
+      list.innerHTML = `<div class="empty"><div class="empty-icon">🐾</div><div class="empty-text">Šiandien įrašų nėra<br><span style="font-size:11px;color:var(--text3)">(ieškota: ${today})</span></div></div>`;
+    } else {
+      renderEntries(list, entries, true);
+    }
   } catch(err) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
   }
@@ -1534,8 +1540,18 @@ async function doDeleteEntry(date, kas, val) {
     const r = await post({ action:'deleteEntry', date, kas, val });
     if (r.error) throw new Error(r.error);
     toast('Ištrinta ✓', 'ok');
+
+    // Tikriname ar ištrintas įrašas yra šiandien
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const today = `${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}`;
+    const isToday = date === today;
+
+    // Atnaujiname cache
     allEntries = [];
-    fetchAllEntries();
+    await fetchAllEntries(); // istorija
+
+    if (isToday) loadToday(); // šiandien tik jei reikia
   } catch(e) {
     toast('Klaida: ' + e.message, 'err');
   }
