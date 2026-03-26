@@ -17,6 +17,7 @@
       margin: 0;
       padding: 0;
       -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     :root {
@@ -1059,7 +1060,7 @@
 // ╔══════════════════════════════════════╗
 // ║  CONFIG — PAKEISKITE ŠIAS REIKŠMES  ║
 // ╚══════════════════════════════════════╝
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBTzY16GiSgfXYHrQBi2Yla80evEeuMp2gBvstiPMqNAY_51gA0aAEJ0QIwvtVHRwIlA/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHpQXqjNu4nke4VZw_dzH8avojNt1P9CBaY2lvAvYmGNAM3EuHDZo9Ev_J2b9Yt-oByQ/exec';
 
 // Numatytieji pasirinkimai (naudojami pirmą kartą)
 const DEFAULT_ITEMS = [
@@ -1116,9 +1117,9 @@ function showScreen(id) {
 function updateHeaderDate() {
   const d = new Date();
   const DAYS = ['Sekmadienis','Pirmadienis','Antradienis','Trečiadienis','Ketvirtadienis','Penktadienis','Šeštadienis'];
-  const MONTHS = ['sausio','vasario','kovo','balandžio','gegužės','birželio','liepos','rugpjūčio','rugsėjo','spalio','lapkričio','gruodžio'];
-  document.getElementById('headerDate').textContent =
-    `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const pad = n => String(n).padStart(2,'0');
+  const dateStr = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
+  document.getElementById('headerDate').textContent = `${dateStr} ${DAYS[d.getDay()]}`;
 }
 
 function buildYearFilter() {
@@ -1552,31 +1553,45 @@ async function setupBio() {
   if (!window.PublicKeyCredential) {
     toast('Naršyklė nepalaiko biometrikos', 'err'); return;
   }
+
+  // Patikriname ar yra platformos autentifikatorius (Face ID / Touch ID)
+  const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+  if (!available) {
+    toast('Face ID / Touch ID šiame įrenginyje nepalaikomas', 'err'); return;
+  }
+
   try {
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const userId    = crypto.getRandomValues(new Uint8Array(16));
     const cred = await navigator.credentials.create({
       publicKey: {
         challenge,
-        rp: { name:'Maja', id: location.hostname },
-        user: { id: userId, name:'user', displayName:'Maja' },
+        rp: { name: 'Maja' },
+        user: { id: userId, name: 'maja', displayName: 'Maja' },
         pubKeyCredParams: [
-          { alg:-7, type:'public-key' },
-          { alg:-257, type:'public-key' }
+          { alg: -7,   type: 'public-key' },
+          { alg: -257, type: 'public-key' }
         ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
-          userVerification: 'required'
+          userVerification: 'required',
+          residentKey: 'preferred'
         },
-        timeout: 60000
+        timeout: 60000,
+        excludeCredentials: []
       }
     });
     localStorage.setItem('bio_cred', arrToB64(cred.rawId));
     updateBioStatus();
     toast('Face ID sukonfigūruota ✓', 'ok');
   } catch(e) {
-    if (e.name === 'NotAllowedError') toast('Atšaukta', 'err');
-    else toast('Nepavyko: ' + e.message, 'err');
+    if (e.name === 'NotAllowedError') {
+      toast('Atšaukta', 'err');
+    } else if (e.name === 'NotSupportedError') {
+      toast('Šis įrenginys nepalaiko Face ID', 'err');
+    } else {
+      toast('Nepavyko: ' + e.message, 'err');
+    }
   }
 }
 
