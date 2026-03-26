@@ -998,7 +998,7 @@
           <div class="set-name">Keisti PIN</div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E6A88" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
         </div>
-        <div class="set-row clickable" onclick="setupBio()">
+        <div class="set-row clickable" id="bioRow" onclick="setupBio()">
           <span style="font-size:20px;">👁</span>
           <div class="set-name">Face ID / Touch ID</div>
           <div class="set-sub" id="bioStatus">—</div>
@@ -1048,7 +1048,7 @@
 // ╔══════════════════════════════════════╗
 // ║  CONFIG — PAKEISKITE ŠIAS REIKŠMES  ║
 // ╚══════════════════════════════════════╝
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxpKj28-3Du_3VHRUD9eAXmKK8qgI-XS_iRWCbvllDWGvFwyFpG0Bx3SRNNhZNp1QeI/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzj55kYR3J1pPkE0Oosn8ui2zAdWujH3dq1XcFYKkuRuj6iK31ABPcQN8OeAr1vj3LW9g/exec';
 
 // Numatytieji pasirinkimai (naudojami pirmą kartą)
 const DEFAULT_ITEMS = [
@@ -1257,7 +1257,9 @@ async function loadToday() {
   try {
     const d = await get({ action:'getEntries', date: today });
     if (d.error) throw new Error(d.error);
-    renderEntries(list, (d.entries || []).reverse(), true);
+    // Papildomas client-side filtras — apsauga nuo datos formato neatitikimų
+    const entries = (d.entries || []).filter(e => e[0] === today).reverse();
+    renderEntries(list, entries, true);
   } catch(err) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
   }
@@ -1343,9 +1345,9 @@ function applyFilters() {
   const list = document.getElementById('historyList');
 
   let entries = [...allEntries];
-  if (year)  entries = entries.filter(e => e[0].startsWith(year));
-  if (month) entries = entries.filter(e => e[0].split('.')[1] === month);
-  if (kas)   entries = entries.filter(e => e[1] === kas);
+  if (year)  entries = entries.filter(e => e[0].slice(0, 4) === year);
+  if (month) entries = entries.filter(e => e[0].slice(5, 7) === month);
+  if (kas)   entries = entries.filter(e => e[1].toLowerCase() === kas.toLowerCase());
 
   // Naujausios viršuje
   entries.reverse();
@@ -1663,11 +1665,18 @@ async function setupBio() {
 
 function updateBioStatus() {
   const el = document.getElementById('bioStatus');
-  if (el) el.textContent = localStorage.getItem('bio_cred') ? 'Sukonfigūruota ✓' : 'Nesukonfigūruota';
-
-  // Tint bio button if available
   const bioBtn = document.getElementById('bioBtn');
+  const bioRow = document.getElementById('bioRow');
+
+  const isApple = /iphone|ipad|ipod|macintosh/i.test(navigator.userAgent);
+
+  // Slėpti Face ID nustatymų eilutę ne-Apple įrenginiuose
+  if (bioRow) bioRow.style.display = isApple ? '' : 'none';
+
+  if (el) el.textContent = localStorage.getItem('bio_cred') ? 'Sukonfigūruota ✓' : 'Nesukonfigūruota';
   if (bioBtn) {
+    // Rodyti Face ID mygtuką tik jei Apple ir sukonfigūruota
+    bioBtn.style.display = isApple ? 'flex' : 'none';
     bioBtn.style.color = localStorage.getItem('bio_cred') ? 'var(--accent)' : 'var(--text3)';
   }
 }
