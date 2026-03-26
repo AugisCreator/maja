@@ -44,6 +44,7 @@
 
     html, body {
       height: 100%;
+      height: -webkit-fill-available;
       overflow: hidden;
       background: var(--bg);
       color: var(--text);
@@ -56,6 +57,8 @@
     .screen {
       position: fixed;
       inset: 0;
+      height: 100%;
+      height: -webkit-fill-available;
       display: flex;
       flex-direction: column;
       transition: opacity .25s ease, transform .25s ease;
@@ -1048,7 +1051,7 @@
 // ╔══════════════════════════════════════╗
 // ║  CONFIG — PAKEISKITE ŠIAS REIKŠMES  ║
 // ╚══════════════════════════════════════╝
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzj55kYR3J1pPkE0Oosn8ui2zAdWujH3dq1XcFYKkuRuj6iK31ABPcQN8OeAr1vj3LW9g/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzS7JJW3HHw85U19Gp8PiZubkc78enoUPgf9WxTj99ktbnOX5FCxvOEkmoSV7gb1upLCA/exec';
 
 // Numatytieji pasirinkimai (naudojami pirmą kartą)
 const DEFAULT_ITEMS = [
@@ -1258,7 +1261,7 @@ async function loadToday() {
     const d = await get({ action:'getEntries', date: today });
     if (d.error) throw new Error(d.error);
     // Papildomas client-side filtras — apsauga nuo datos formato neatitikimų
-    const entries = (d.entries || []).filter(e => e[0] === today).reverse();
+    const entries = (d.entries || []).filter(e => e[0] === today);
     renderEntries(list, entries, true);
   } catch(err) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
@@ -1349,8 +1352,7 @@ function applyFilters() {
   if (month) entries = entries.filter(e => e[0].slice(5, 7) === month);
   if (kas)   entries = entries.filter(e => e[1].toLowerCase() === kas.toLowerCase());
 
-  // Naujausios viršuje
-  entries.reverse();
+  // Sheets jau rūšiuoja descending (naujausi viršuje) — nereikia reverse
 
   if (!entries.length) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Įrašų nerasta</div></div>`;
@@ -1639,7 +1641,7 @@ async function setupBio() {
     const cred = await navigator.credentials.create({
       publicKey: {
         challenge,
-        rp: { name: 'Maja' },
+        rp: { name: 'Maja', id: location.hostname },
         user: { id: userId, name: 'maja', displayName: 'Maja' },
         pubKeyCredParams: [
           { alg: -7,   type: 'public-key' },
