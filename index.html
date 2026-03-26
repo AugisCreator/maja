@@ -1114,15 +1114,25 @@ const DEFAULT_ITEMS = [
 
 const ITEM_COLORS = [
   '#7C3AED','#991B1B','#92400E','#065F46','#C47000',
-  '#166534','#1E40AF','#0E7490','#854D0E','#065F46'
+  '#166534','#1E40AF','#0E7490','#854D0E','#0F766E',
+  '#9D174D','#1D4ED8','#B45309','#15803D','#7E22CE',
+  '#BE123C','#0369A1','#CA8A04','#16A34A','#DC2626'
 ];
+
+function pickColor() {
+  const used = new Set(items.map(i => i.color));
+  const free = ITEM_COLORS.filter(c => !used.has(c));
+  // Jei dar yra laisvų — paima pirmą laisvą, kitaip — atsitiktinę
+  return free.length
+    ? free[0]
+    : ITEM_COLORS[Math.floor(Math.random() * ITEM_COLORS.length)];
+}
 
 // ──────────────────────────────────────
 // STATE
 // ──────────────────────────────────────
 let items = [];
 let newType = 'fixed';
-let colorCursor = 0;
 
 // ──────────────────────────────────────
 // INIT
@@ -1545,9 +1555,8 @@ function addItem() {
   const item = {
     id: name.toLowerCase().replace(/[^a-z0-9]/gi,'') + '_' + Date.now(),
     name, action, type: newType,
-    color: ITEM_COLORS[colorCursor % ITEM_COLORS.length]
+    color: pickColor()
   };
-  colorCursor++;
 
   if (newType === 'number') {
     item.unit = document.getElementById('newUnit').value.trim() || 'vnt.';
