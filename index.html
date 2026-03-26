@@ -1615,10 +1615,20 @@ async function setupBio() {
     toast('Naršyklė nepalaiko biometrikos', 'err'); return;
   }
 
-  // Patikriname ar yra platformos autentifikatorius (Face ID / Touch ID)
-  const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isMac = /macintosh/i.test(navigator.userAgent);
+
+  if (!isIOS && !isMac) {
+    toast('Face ID veikia tik iPhone/iPad per Safari', 'err');
+    return;
+  }
+
+  const available = await PublicKeyCredential
+    .isUserVerifyingPlatformAuthenticatorAvailable()
+    .catch(() => false);
+
   if (!available) {
-    toast('Face ID / Touch ID šiame įrenginyje nepalaikomas', 'err'); return;
+    toast('Face ID šiame įrenginyje nerastas', 'err'); return;
   }
 
   try {
@@ -1646,13 +1656,8 @@ async function setupBio() {
     updateBioStatus();
     toast('Face ID sukonfigūruota ✓', 'ok');
   } catch(e) {
-    if (e.name === 'NotAllowedError') {
-      toast('Atšaukta', 'err');
-    } else if (e.name === 'NotSupportedError') {
-      toast('Šis įrenginys nepalaiko Face ID', 'err');
-    } else {
-      toast('Nepavyko: ' + e.message, 'err');
-    }
+    if (e.name === 'NotAllowedError') toast('Atšaukta', 'err');
+    else toast('Nepavyko: ' + e.message, 'err');
   }
 }
 
