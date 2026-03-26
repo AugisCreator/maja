@@ -1294,7 +1294,8 @@ async function submitEntry() {
   try {
     await post({ action:'addEntry', date:dateStr, kas:item.name, veiksmas:val, time:timeStr });
     toast('Išsaugota ✓', 'ok');
-    allEntries = []; // Išvalom cache
+    allEntries = [];
+    allEntriesLoaded = false;
     if (item.type === 'number') {
       document.getElementById('numInput').value = item.step < 1 ? '0.0' : '0';
     }
@@ -1334,12 +1335,73 @@ async function loadToday() {
 
 // Visi duomenys iš Sheets (cache)
 let allEntries = [];
+let allEntriesLoaded = false; // ar jau visa istorija užkrauta
+let lastHistoryYear  = '';
+let lastHistoryMonth = '';
+let historyVisited   = false;
+
+async function initHistory() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const curYear  = String(now.getFullYear());
+  const curMonth = pad(now.getMonth() + 1);
+
+  const fYear  = document.getElementById('fYear');
+  const fMonth = document.getElementById('fMonth');
+
+  if (!historyVisited) {
+    // Pirmas apsilankymas — nustatome dabartinius metus ir mėnesį
+    lastHistoryYear  = curYear;
+    lastHistoryMonth = curMonth;
+    historyVisited   = true;
+  }
+
+  // Atnaujiname dropdown reikšmes
+  setYearOption(lastHistoryYear);
+  setMonthOption(lastHistoryMonth);
+
+  // Jei jau turime duomenis — rodome iš karto
+  if (allEntries.length) {
+    buildDynamicFilters();
+    return;
+  }
+
+  // Greita užklausa — tik šis mėnuo
+  const list = document.getElementById('historyList');
+  list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
+
+  try {
+    const fast = await get({ action:'getEntries', year: lastHistoryYear, month: lastHistoryMonth });
+    if (fast.error) throw new Error(fast.error);
+
+    // Rodome greitai gautus duomenis
+    const quickEntries = fast.entries || [];
+    renderFilteredList(quickEntries);
+
+    // Fone krauname viską
+    loadAllInBackground();
+  } catch(err) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
+  }
+}
+
+async function loadAllInBackground() {
+  try {
+    const d = await get({ action:'getEntries' });
+    if (d.error) return;
+    allEntries = d.entries || [];
+    allEntriesLoaded = true;
+    // Atnaujina filtrus (metai, mėnesiai dropdown) bet nekeičia rodomo sąrašo
+    buildDynamicFilters();
+  } catch {}
+}
 
 async function fetchAllEntries() {
   try {
     const d = await get({ action:'getEntries' });
     if (d.error) throw new Error(d.error);
     allEntries = d.entries || [];
+    allEntriesLoaded = true;
     buildDynamicFilters();
   } catch(err) {
     document.getElementById('historyList').innerHTML =
@@ -1347,11 +1409,37 @@ async function fetchAllEntries() {
   }
 }
 
+function setYearOption(year) {
+  const sel = document.getElementById('fYear');
+  // Pridedame opciją jei nėra
+  if (year && ![...sel.options].find(o => o.value === year)) {
+    const o = document.createElement('option');
+    o.value = year; o.textContent = year;
+    sel.appendChild(o);
+  }
+  sel.value = year;
+}
+
+function setMonthOption(month) {
+  const MNAMES = {
+    '01':'Sausis','02':'Vasaris','03':'Kovas','04':'Balandis',
+    '05':'Gegužė','06':'Birželis','07':'Liepa','08':'Rugpjūtis',
+    '09':'Rugsėjis','10':'Spalis','11':'Lapkritis','12':'Gruodis'
+  };
+  const sel = document.getElementById('fMonth');
+  if (month && ![...sel.options].find(o => o.value === month)) {
+    const o = document.createElement('option');
+    o.value = month; o.textContent = MNAMES[month] || month;
+    sel.appendChild(o);
+  }
+  sel.value = month;
+}
+
 function buildDynamicFilters() {
-  // Surenkame unikalius metus iš duomenų
-  const years = [...new Set(allEntries.map(e => e[0].split('.')[0]).filter(Boolean))].sort().reverse();
+  const years = [...new Set(allEntries.map(e => e[0].slice(0,4)).filter(Boolean))].sort().reverse();
   const fYear = document.getElementById('fYear');
   const curYear = fYear.value;
+
   fYear.innerHTML = '<option value="">Visi metai</option>';
   years.forEach(y => {
     const o = document.createElement('option');
@@ -1359,8 +1447,8 @@ function buildDynamicFilters() {
     if (y === curYear) o.selected = true;
     fYear.appendChild(o);
   });
-  // Jei nebuvo pasirinkta — pasirenkame naujausius metus
   if (!fYear.value && years.length) fYear.value = years[0];
+
   updateMonthFilter();
 }
 
@@ -1369,9 +1457,8 @@ function updateMonthFilter() {
   const fMonth = document.getElementById('fMonth');
   const curMonth = fMonth.value;
 
-  // Kurie mėnesiai egzistuoja pasirinktuose metuose
   const monthsInYear = year
-    ? [...new Set(allEntries.filter(e => e[0].startsWith(year)).map(e => e[0].split('.')[1]).filter(Boolean))].sort()
+    ? [...new Set(allEntries.filter(e => e[0].slice(0,4) === year).map(e => e[0].slice(5,7)).filter(Boolean))].sort()
     : [];
 
   const MNAMES = {
@@ -1388,20 +1475,12 @@ function updateMonthFilter() {
     fMonth.appendChild(o);
   });
 
-  // Jei pasirinktas mėnuo neegzistuoja šiuose metuose — reset
-  if (curMonth && !monthsInYear.includes(curMonth)) {
-    fMonth.value = '';
-  }
-
+  if (curMonth && !monthsInYear.includes(curMonth)) fMonth.value = '';
   applyFilters();
 }
 
 async function loadHistory() {
-  if (!allEntries.length) {
-    await fetchAllEntries();
-  } else {
-    applyFilters();
-  }
+  applyFilters();
 }
 
 function applyFilters() {
@@ -1409,15 +1488,34 @@ function applyFilters() {
   const month = document.getElementById('fMonth').value;
   const activeChip = document.querySelector('.chip.active');
   const kas = activeChip ? activeChip.dataset.v : '';
+
+  lastHistoryYear  = year;
+  lastHistoryMonth = month;
+
+  if (allEntriesLoaded) {
+    let entries = [...allEntries];
+    if (year)  entries = entries.filter(e => e[0].slice(0,4) === year);
+    if (month) entries = entries.filter(e => e[0].slice(5,7) === month);
+    if (kas)   entries = entries.filter(e => e[1].toLowerCase() === kas.toLowerCase());
+    renderFilteredList(entries);
+  } else {
+    // Dar neužkrauta visa — siųsti užklausą su filtrais
+    const params = { action:'getEntries' };
+    if (year)  params.year  = year;
+    if (month) params.month = month;
+    const list = document.getElementById('historyList');
+    list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
+    get(params).then(d => {
+      let entries = d.entries || [];
+      if (kas) entries = entries.filter(e => e[1].toLowerCase() === kas.toLowerCase());
+      renderFilteredList(entries);
+    }).catch(() => {});
+  }
+}
+
+function renderFilteredList(entries) {
   const list = document.getElementById('historyList');
   const countEl = document.getElementById('historyCount');
-
-  let entries = [...allEntries];
-  if (year)  entries = entries.filter(e => e[0].slice(0, 4) === year);
-  if (month) entries = entries.filter(e => e[0].slice(5, 7) === month);
-  if (kas)   entries = entries.filter(e => e[1].toLowerCase() === kas.toLowerCase());
-
-  // Skaičius
   if (countEl) countEl.textContent = entries.length ? `${entries.length} įrašai` : '';
 
   if (!entries.length) {
@@ -1549,9 +1647,10 @@ async function doDeleteEntry(date, kas, val) {
 
     // Atnaujiname cache
     allEntries = [];
-    await fetchAllEntries(); // istorija
+    allEntriesLoaded = false;
+    await fetchAllEntries();
 
-    if (isToday) loadToday(); // šiandien tik jei reikia
+    if (isToday) loadToday();
   } catch(e) {
     toast('Klaida: ' + e.message, 'err');
   }
@@ -1598,14 +1697,7 @@ function switchTab(tab) {
     document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
     document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
   });
-  if (tab === 'history') {
-    // Krauname tik jei dar neužkrauta
-    if (!allEntries.length) {
-      const list = document.getElementById('historyList');
-      list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
-      fetchAllEntries();
-    }
-  }
+  if (tab === 'history') initHistory();
 }
 
 // ──────────────────────────────────────
