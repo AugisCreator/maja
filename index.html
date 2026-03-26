@@ -629,6 +629,39 @@
 
     .del-btn:active { background: rgba(239,68,68,.12); }
 
+    .order-btn {
+      background: none;
+      border: none;
+      color: var(--text2);
+      font-size: 11px;
+      width: 24px;
+      height: 20px;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .order-btn:active { background: var(--surface3); }
+
+    .entry-del-btn {
+      background: none;
+      border: none;
+      color: var(--danger);
+      font-size: 13px;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.6;
+      flex-shrink: 0;
+    }
+    .entry-del-btn:active { opacity: 1; background: rgba(239,68,68,.12); }
+
     /* add form */
     .add-form {
       background: var(--surface);
@@ -944,7 +977,10 @@
   <!-- ── HISTORY VIEW ── -->
   <div id="view-history" class="view hidden">
     <div class="v-header">
-      <div class="v-title">Istorija</div>
+      <div>
+        <div class="v-title">Istorija</div>
+        <div class="v-sub" id="historyCount"></div>
+      </div>
     </div>
 
     <div class="filter-row">
@@ -1044,6 +1080,17 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
+<!-- MODAL: Delete entry confirmation -->
+<div class="modal-bg" id="deleteModal" onclick="closeModal('deleteModal')">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🗑 Ištrinti įrašą?</div>
+    <div id="deleteInfo" style="text-align:center;color:var(--text2);font-size:14px;margin-bottom:24px;line-height:1.6;padding:0 10px;"></div>
+    <button class="btn-primary" id="deleteConfirmBtn" style="background:var(--danger);margin-bottom:10px;">Taip, ištrinti</button>
+    <button class="btn-primary" onclick="closeModal('deleteModal')" style="background:var(--surface2);color:var(--text2);">Atšaukti</button>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════
      JAVASCRIPT
 ══════════════════════════════════════ -->
@@ -1051,7 +1098,7 @@
 // ╔══════════════════════════════════════╗
 // ║  CONFIG — PAKEISKITE ŠIAS REIKŠMES  ║
 // ╚══════════════════════════════════════╝
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzS7JJW3HHw85U19Gp8PiZubkc78enoUPgf9WxTj99ktbnOX5FCxvOEkmoSV7gb1upLCA/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzLszDT6CDzsFU10S5Q83vDjkYnOvv9PXaKYSiBPEowYTYONLUyR4xxOsYgHIAVABDYGg/exec';
 
 // Numatytieji pasirinkimai (naudojami pirmą kartą)
 const DEFAULT_ITEMS = [
@@ -1346,13 +1393,15 @@ function applyFilters() {
   const activeChip = document.querySelector('.chip.active');
   const kas = activeChip ? activeChip.dataset.v : '';
   const list = document.getElementById('historyList');
+  const countEl = document.getElementById('historyCount');
 
   let entries = [...allEntries];
   if (year)  entries = entries.filter(e => e[0].slice(0, 4) === year);
   if (month) entries = entries.filter(e => e[0].slice(5, 7) === month);
   if (kas)   entries = entries.filter(e => e[1].toLowerCase() === kas.toLowerCase());
 
-  // Sheets jau rūšiuoja descending (naujausi viršuje) — nereikia reverse
+  // Skaičius
+  if (countEl) countEl.textContent = entries.length ? `${entries.length} įrašai` : '';
 
   if (!entries.length) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Įrašų nerasta</div></div>`;
@@ -1369,7 +1418,7 @@ function applyFilters() {
       dh.textContent = e[0];
       list.appendChild(dh);
     }
-    list.appendChild(makeEntryEl(e));
+    list.appendChild(makeEntryEl(e, true));
   });
 }
 
@@ -1382,8 +1431,8 @@ function renderEntries(container, entries, showEmpty) {
   entries.forEach(e => container.appendChild(makeEntryEl(e)));
 }
 
-function makeEntryEl(e) {
-  const item = items.find(i => i.name === e[1]) || {};
+function makeEntryEl(e, showDel) {
+  const item = items.find(i => i.name.toLowerCase() === (e[1]||'').toLowerCase()) || {};
   const color = item.color || '#4A90D9';
   const div = document.createElement('div');
   div.className = 'entry-item';
@@ -1393,6 +1442,7 @@ function makeEntryEl(e) {
     <div class="e-name">${e[1]}</div>
     <div class="e-val">${e[2]}</div>
     ${e[3] ? `<div class="e-time">${e[3]}</div>` : ''}
+    ${showDel ? `<button class="entry-del-btn" onclick="confirmDeleteEntry(this)" data-date="${e[0]}" data-kas="${e[1]}" data-val="${e[2]}">✕</button>` : ''}
   `;
   return div;
 }
@@ -1413,10 +1463,21 @@ function renderSettingsList() {
         <div class="set-name">${item.name}</div>
         <div class="set-sub">${item.type==='number'?`Skaičius · ${item.unit||''}`:item.action}</div>
       </div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-right:6px;">
+        <button class="order-btn" onclick="moveItem(${idx},-1)" ${idx===0?'style="opacity:.25;pointer-events:none"':''}>▲</button>
+        <button class="order-btn" onclick="moveItem(${idx},1)" ${idx===items.length-1?'style="opacity:.25;pointer-events:none"':''}>▼</button>
+      </div>
       <button class="del-btn" onclick="deleteItem(${idx})">✕</button>
     `;
     c.appendChild(row);
   });
+}
+
+function moveItem(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= items.length) return;
+  [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
+  saveItems();
 }
 
 function renderChipBar() {
@@ -1444,6 +1505,29 @@ function deleteItem(idx) {
   items.splice(idx, 1);
   saveItems();
   toast('Ištrinta', 'ok');
+}
+
+function confirmDeleteEntry(btn) {
+  const date = btn.dataset.date;
+  const kas  = btn.dataset.kas;
+  const val  = btn.dataset.val;
+  document.getElementById('deleteInfo').innerHTML =
+    `<strong>${kas}</strong><br>${val}<br><span style="color:var(--text3)">${date}</span>`;
+  document.getElementById('deleteConfirmBtn').onclick = () => doDeleteEntry(date, kas, val);
+  openModal('deleteModal');
+}
+
+async function doDeleteEntry(date, kas, val) {
+  closeModal('deleteModal');
+  try {
+    const r = await post({ action:'deleteEntry', date, kas, val });
+    if (r.error) throw new Error(r.error);
+    toast('Ištrinta ✓', 'ok');
+    allEntries = [];
+    fetchAllEntries();
+  } catch(e) {
+    toast('Klaida: ' + e.message, 'err');
+  }
 }
 
 function setType(t) {
