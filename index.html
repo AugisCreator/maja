@@ -1039,8 +1039,11 @@
         </div>
         <div class="set-row clickable" id="bioRow" onclick="setupBio()">
           <span style="font-size:20px;">👁</span>
-          <div class="set-name">Face ID / Touch ID</div>
-          <div class="set-sub" id="bioStatus">—</div>
+          <div style="flex:1">
+            <div class="set-name">Face ID / Touch ID</div>
+            <div class="set-sub" id="bioStatus">—</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4;">Kai pasirodys langas — pasirinkite <strong style="color:var(--text2)">„iPhone"</strong> arba <strong style="color:var(--text2)">„iCloud Keychain"</strong>, ne Microsoft</div>
+          </div>
         </div>
       </div>
     </div>
@@ -1317,9 +1320,7 @@ async function loadToday() {
   try {
     const d = await get({ action:'getEntries', date: today });
     if (d.error) throw new Error(d.error);
-    // Papildomas client-side filtras — apsauga nuo datos formato neatitikimų
-    const entries = (d.entries || []).filter(e => e[0] === today);
-    renderEntries(list, entries, true);
+    renderEntries(list, d.entries || [], true);
   } catch(err) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
   }
@@ -1582,10 +1583,12 @@ function switchTab(tab) {
     document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
   });
   if (tab === 'history') {
-    allEntries = []; // Perkrauname iš naujo
-    const list = document.getElementById('historyList');
-    list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
-    fetchAllEntries();
+    // Krauname tik jei dar neužkrauta
+    if (!allEntries.length) {
+      const list = document.getElementById('historyList');
+      list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
+      fetchAllEntries();
+    }
   }
 }
 
