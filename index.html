@@ -945,23 +945,11 @@
     </div>
 
     <div class="filter-row">
-      <select class="f-select-sm" id="fYear" onchange="loadHistory()">
+      <select class="f-select-sm" id="fYear" onchange="updateMonthFilter()">
         <option value="">Visi metai</option>
       </select>
-      <select class="f-select-sm" id="fMonth" onchange="loadHistory()">
+      <select class="f-select-sm" id="fMonth" onchange="applyFilters()">
         <option value="">Visi mėn.</option>
-        <option value="01">Sausis</option>
-        <option value="02">Vasaris</option>
-        <option value="03">Kovas</option>
-        <option value="04">Balandis</option>
-        <option value="05">Gegužė</option>
-        <option value="06">Birželis</option>
-        <option value="07">Liepa</option>
-        <option value="08">Rugpjūtis</option>
-        <option value="09">Rugsėjis</option>
-        <option value="10">Spalis</option>
-        <option value="11">Lapkritis</option>
-        <option value="12">Gruodis</option>
       </select>
     </div>
 
@@ -1092,7 +1080,6 @@ let colorCursor = 0;
 document.addEventListener('DOMContentLoaded', () => {
   loadItems();
   updateHeaderDate();
-  buildYearFilter();
   updateBioStatus();
 
   const hasPin = localStorage.getItem('maja_pin');
@@ -1244,6 +1231,7 @@ async function submitEntry() {
   try {
     await post({ action:'addEntry', date:dateStr, kas:item.name, veiksmas:val, time:timeStr });
     toast('Išsaugota ✓', 'ok');
+    allEntries = []; // Išvalom cache
     if (item.type === 'number') {
       document.getElementById('numInput').value = item.step < 1 ? '0.0' : '0';
     }
@@ -1264,53 +1252,121 @@ async function loadToday() {
   const pad = n => String(n).padStart(2,'0');
   const today = `${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}`;
   const list = document.getElementById('todayList');
+  list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
 
   try {
     const d = await get({ action:'getEntries', date: today });
+    if (d.error) throw new Error(d.error);
     renderEntries(list, (d.entries || []).reverse(), true);
-  } catch {
-    list.innerHTML = `<div class="empty"><div class="empty-text">Nepavyko užkrauti</div></div>`;
+  } catch(err) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
   }
 }
 
+// Visi duomenys iš Sheets (cache)
+let allEntries = [];
+
+async function fetchAllEntries() {
+  try {
+    const d = await get({ action:'getEntries' });
+    if (d.error) throw new Error(d.error);
+    allEntries = d.entries || [];
+    buildDynamicFilters();
+  } catch(err) {
+    document.getElementById('historyList').innerHTML =
+      `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--danger);font-size:12px;">${err.message}</div></div>`;
+  }
+}
+
+function buildDynamicFilters() {
+  // Surenkame unikalius metus iš duomenų
+  const years = [...new Set(allEntries.map(e => e[0].split('.')[0]).filter(Boolean))].sort().reverse();
+  const fYear = document.getElementById('fYear');
+  const curYear = fYear.value;
+  fYear.innerHTML = '<option value="">Visi metai</option>';
+  years.forEach(y => {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    if (y === curYear) o.selected = true;
+    fYear.appendChild(o);
+  });
+  // Jei nebuvo pasirinkta — pasirenkame naujausius metus
+  if (!fYear.value && years.length) fYear.value = years[0];
+  updateMonthFilter();
+}
+
+function updateMonthFilter() {
+  const year = document.getElementById('fYear').value;
+  const fMonth = document.getElementById('fMonth');
+  const curMonth = fMonth.value;
+
+  // Kurie mėnesiai egzistuoja pasirinktuose metuose
+  const monthsInYear = year
+    ? [...new Set(allEntries.filter(e => e[0].startsWith(year)).map(e => e[0].split('.')[1]).filter(Boolean))].sort()
+    : [];
+
+  const MNAMES = {
+    '01':'Sausis','02':'Vasaris','03':'Kovas','04':'Balandis',
+    '05':'Gegužė','06':'Birželis','07':'Liepa','08':'Rugpjūtis',
+    '09':'Rugsėjis','10':'Spalis','11':'Lapkritis','12':'Gruodis'
+  };
+
+  fMonth.innerHTML = '<option value="">Visi mėn.</option>';
+  monthsInYear.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = MNAMES[m] || m;
+    if (m === curMonth) o.selected = true;
+    fMonth.appendChild(o);
+  });
+
+  // Jei pasirinktas mėnuo neegzistuoja šiuose metuose — reset
+  if (curMonth && !monthsInYear.includes(curMonth)) {
+    fMonth.value = '';
+  }
+
+  applyFilters();
+}
+
 async function loadHistory() {
+  if (!allEntries.length) {
+    await fetchAllEntries();
+  } else {
+    applyFilters();
+  }
+}
+
+function applyFilters() {
   const year  = document.getElementById('fYear').value;
   const month = document.getElementById('fMonth').value;
   const activeChip = document.querySelector('.chip.active');
   const kas = activeChip ? activeChip.dataset.v : '';
   const list = document.getElementById('historyList');
 
-  list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
+  let entries = [...allEntries];
+  if (year)  entries = entries.filter(e => e[0].startsWith(year));
+  if (month) entries = entries.filter(e => e[0].split('.')[1] === month);
+  if (kas)   entries = entries.filter(e => e[1] === kas);
 
-  try {
-    const params = { action:'getEntries' };
-    if (year)  params.year  = year;
-    if (month) params.month = month;
-    if (kas)   params.kas   = kas;
+  // Naujausios viršuje
+  entries.reverse();
 
-    const d = await get(params);
-    const entries = (d.entries || []).reverse();
-
-    if (!entries.length) {
-      list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Įrašų nerasta</div></div>`;
-      return;
-    }
-
-    list.innerHTML = '';
-    let lastDate = '';
-    entries.forEach(e => {
-      if (e[0] !== lastDate) {
-        lastDate = e[0];
-        const dh = document.createElement('div');
-        dh.className = 'date-group';
-        dh.textContent = e[0];
-        list.appendChild(dh);
-      }
-      list.appendChild(makeEntryEl(e));
-    });
-  } catch {
-    list.innerHTML = `<div class="empty"><div class="empty-text">Nepavyko užkrauti</div></div>`;
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Įrašų nerasta</div></div>`;
+    return;
   }
+
+  list.innerHTML = '';
+  let lastDate = '';
+  entries.forEach(e => {
+    if (e[0] !== lastDate) {
+      lastDate = e[0];
+      const dh = document.createElement('div');
+      dh.className = 'date-group';
+      dh.textContent = e[0];
+      list.appendChild(dh);
+    }
+    list.appendChild(makeEntryEl(e));
+  });
 }
 
 function renderEntries(container, entries, showEmpty) {
@@ -1376,7 +1432,7 @@ function renderChipBar() {
 function chipClick(btn) {
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
-  loadHistory();
+  applyFilters();
 }
 
 function deleteItem(idx) {
@@ -1428,7 +1484,12 @@ function switchTab(tab) {
     document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
     document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
   });
-  if (tab === 'history') loadHistory();
+  if (tab === 'history') {
+    allEntries = []; // Perkrauname iš naujo
+    const list = document.getElementById('historyList');
+    list.innerHTML = `<div class="empty"><div class="spin" style="width:28px;height:28px;border-width:3px;margin:40px auto;display:block;border-top-color:#F59E0B;border-color:rgba(245,158,11,.2)"></div></div>`;
+    fetchAllEntries();
+  }
 }
 
 // ──────────────────────────────────────
