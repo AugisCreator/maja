@@ -2003,6 +2003,32 @@ async function post(data) {
 }
 
 // ──────────────────────────────────────
+// TAP VIRŠUJE → SCROLL Į VIRŠŲ (iOS stilius)
+// ──────────────────────────────────────
+(function() {
+  let lastTap = 0;
+  document.addEventListener('touchend', function(e) {
+    // Tik jei lietimas buvo viršutinėje 50px zonoje
+    const touch = e.changedTouches[0];
+    if (!touch || touch.clientY > 50) return;
+
+    const now = Date.now();
+    // Vienas tap (ne double tap) — palaukiam 200ms kad įsitikintume
+    if (now - lastTap < 300) return;
+    lastTap = now;
+
+    setTimeout(() => {
+      if (Date.now() - lastTap < 250) return; // buvo double tap — ignoruoti
+      // Randame aktyvų view
+      const activeView = document.querySelector('.view:not(.hidden)');
+      if (activeView && activeView.scrollTop > 0) {
+        activeView.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 250);
+  }, { passive: true });
+})();
+
+// ──────────────────────────────────────
 // UTILS
 // ──────────────────────────────────────
 function toast(msg, type) {
