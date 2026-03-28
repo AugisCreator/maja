@@ -1102,6 +1102,9 @@
 // ║  CONFIG — PAKEISKITE ŠIAS REIKŠMES  ║
 // ╚══════════════════════════════════════╝
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzLszDT6CDzsFU10S5Q83vDjkYnOvv9PXaKYSiBPEowYTYONLUyR4xxOsYgHIAVABDYGg/exec';
+const SHEET_ID = '1CYOv9wwFXwzjYCiUVlBe83IUwoY5cCdV5__BjlMieoU';
+const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=Maja`;
+const SETTINGS_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=Nustatymai`;
 
 // Numatytieji pasirinkimai (naudojami pirmą kartą)
 const DEFAULT_ITEMS = [
@@ -1937,7 +1940,52 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 // ──────────────────────────────────────
 // API
 // ──────────────────────────────────────
+// CSV eilutės skaitymas (atspariai kablelių ir kabučių atžvilgiu)
+function parseCSVLine(line) {
+  const cols = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+    else { cur += c; }
+  }
+  cols.push(cur.trim());
+  return cols;
+}
+
 async function get(params) {
+  // Skaitymas — tiesiai per CSV (greičiau nei Apps Script)
+  if (params.action === 'getEntries') {
+    const r = await fetch(SHEET_CSV_URL);
+    if (!r.ok) throw new Error('CSV klaida: ' + r.status);
+    const text = await r.text();
+    const rows = text.trim().split('\n').slice(1) // praleisti antraštę
+      .map(line => {
+        const cols = parseCSVLine(line);
+        return [cols[0]||'', cols[1]||'', cols[2]||'', cols[3]||''];
+      })
+      .filter(r => r[0] !== '');
+
+    let entries = rows;
+    if (params.date)  entries = entries.filter(r => r[0] === params.date);
+    if (params.year)  entries = entries.filter(r => r[0].slice(0,4) === params.year);
+    if (params.month) entries = entries.filter(r => r[0].slice(5,7) === params.month);
+    if (params.kas)   entries = entries.filter(r => r[1].toLowerCase() === params.kas.toLowerCase());
+    return { entries };
+  }
+
+  if (params.action === 'getSettings') {
+    try {
+      const r = await fetch(SETTINGS_CSV_URL);
+      if (!r.ok) return { items: null };
+      const text = await r.text();
+      const val = text.trim().split('\n')[0] || null;
+      return { items: val };
+    } catch { return { items: null }; }
+  }
+
+  // Kita — per Apps Script
   const url = new URL(SCRIPT_URL);
   Object.entries(params).forEach(([k,v]) => url.searchParams.set(k,v));
   const r = await fetch(url.toString(), { redirect:'follow' });
